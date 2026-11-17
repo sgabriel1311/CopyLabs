@@ -118,7 +118,9 @@ EXEMPLO:
           body: JSON.stringify({ text: extractedText, systemInstruction: SYSTEM_INSTRUCTION })
         });
 
-        if (!response.ok) throw new Error('Servidores ocupados. Tente novamente.');
+        if (!response.ok) {
+            const detalheErro = await response.text();
+            throw new Error(detalheErro || 'Erro na comunicação com o servidor.');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
