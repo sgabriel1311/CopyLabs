@@ -45,8 +45,7 @@
   </div>
 
   <script>
-    
-    const WORKER_URL = "copylabs.lgpsluizgabriel.workers.dev";
+    const WORKER_URL = "https://copylabs.lgpsluizgabriel.workers.dev";
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -106,18 +105,13 @@ EXEMPLO:
     }
 
     async function processFile(file) {
-      if (!WORKER_URL.startsWith('http')) {
-        statusEl.textContent = '⚠️ Configure a WORKER_URL no código HTML antes de usar.';
-        return;
-      }
-
       statusEl.textContent = '⚡ Lendo PDF e transcrevendo...';
       resultCard.style.display = 'block';
       outputEl.value = '';
 
       try {
         const extractedText = await extractPdfText(file);
-        const response = await fetch(WORKER_URL.replace(/\/$/, ''), {
+        const response = await fetch(WORKER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: extractedText, systemInstruction: SYSTEM_INSTRUCTION })
