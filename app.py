@@ -10,23 +10,28 @@ st.set_page_config(page_title="Transcritor de Exames", page_icon="🩺", layout=
 st.title("🩺 Transcritor de Exames para Prontuário")
 st.caption("Aviso: Nenhum arquivo é armazenado. Oculte nome/CPF antes de enviar.")
 
-# Prompt ultra-enxuto para menor tempo de processamento (prefill)
-SYSTEM_INSTRUCTION = """Transcreva resultados laboratoriais em texto puro corrido por data para prontuário médico.
-REGRAS:
-- Proibido Markdown (sem **, *, # ou quebras dentro da mesma data).
-- Sem valores de referência, introduções ou comentários.
-- Formato: (DD/MM/AAAA): Exame1 Valor / Exame2 Valor
+SYSTEM_INSTRUCTION = """Transcreva resultados laboratoriais em texto puro corrido por data para evolução em prontuário médico.
+REGRAS ESTRITAS:
+- Proibido Markdown (sem **, *, # ou quebras de linha dentro da mesma data).
+- NUNCA escreva os valores de referência na saída, mas USE os valores de referência do laudo para avaliar o leucograma:
+  * Inclua os diferenciais do leucograma (Bastões, Segmentados, Linfócitos, Monócitos, Eosinófilos, Basófilos, Blastos/Meta/Mielo) SOMENTE se algum estiver ALTERADO (fora do VR do laudo) ou se houver desvio à esquerda. Se o leucograma diferencial estiver normal, omita todos os diferenciais e mostre apenas "Leuco: X".
+- Sem introduções, saudações ou comentários.
+- Formato: (DD/MM/AAAA): Exame: Valor / Exame: Valor
 - Sem títulos de categoria (exceto GASO ARTERIAL:, GASO VENOSA: e D-DÍMERO:).
-- Abreviações obrigatórias: Hemoglobina, Hematocrito %, Leucócitos, Bastões %, Meta %, Mielo %, Plaquetas, Uréia, Creatinina, PCR, Sódio, Potássio, Magnésio, TGO, TGP, Bilirrubina total, BD, BI, TAP %, RNI, TTPa, Relação, Proteínas Totais, Albumina, Lactato (unidade).
-EXEMPLO:
-(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL) 9 / Troponina 12,8 / D-DÍMERO: > 7650 / Hemoglobina 8,1 / Hematocrito 25,6% / Leucócitos 71.380 / Bastões 0,0% / Meta 0,0% / Mielo 0,0% / Plaquetas 399.000 / Uréia 88 / Creatinina 2,20 / PCR 214,5 / Sódio 140 / Potássio 4,2 / Magnésio 1,5 / TGO 16 / TGP 10 / Bilirrubina total 0,2 / BD 0,2 / BI 0,0 / TAP 77,0% / RNI 1,16 / TTPa 23,6 / Relação 0,82 / Proteínas Totais 4,6 / Albumina 2,0"""
+- USE OBRIGATORIAMENTE ESTAS ABREVIAÇÕES MÉDICAS COM DOIS-PONTOS:
+  * Gasometria: GASO ARTERIAL: pH X / pCO2 X / pO2 X / BE X / HCO3 X / satO2 X% / FIO2 X
+  * Hemograma: Hb: X / Ht: X% / Leuco: X / (diferenciais apenas se alterados) / Plaq: X
+  * Função Renal e Eletrólitos: Ur: X / Cr: X / Na: X / K: X / Mg: X / CaT: X / CaI: X / P: X
+  * Inflamatórios/Cardíacos/Coag: PCR: X / Lactato (unidade): X / Tropo: X / D-DÍMERO: X / TAP: X% / RNI: X / TTPa: X / Relação: X
+  * Hepático/Proteínas: TGO: X / TGP: X / BT: X / BD: X / BI: X / GGT: X / FA: X / Amilase: X / Lipase: X / CPK: X / PT: X / Alb: X
 
-# Mantém a conexão aberta na memória do servidor (elimina latência de handshake SSL)
+EXEMPLO (com leucograma normal omitido):
+(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL): 9 / Tropo: 12,8 / D-DÍMERO: > 7650 / Hb: 8,1 / Ht: 25,6% / Leuco: 8.380 / Plaq: 399.000 / Ur: 88 / Cr: 2,20 / PCR: 214,5 / Na: 140 / K: 4,2 / Mg: 1,5 / TGO: 16 / TGP: 10 / BT: 0,2 / BD: 0,2 / BI: 0,0 / TAP: 77,0% / RNI: 1,16 / TTPa: 23,6 / Relação: 0,82 / PT: 4,6 / Alb: 2,0"""
+
 @st.cache_resource
 def get_gemini_client(key: str):
     return genai.Client(api_key=key)
 
-# Extrai e limpa linhas inúteis (métodos, rodapés) localmente em milissegundos
 def extrair_e_limpar_pdf(pdf_bytes: bytes):
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -87,7 +92,6 @@ if uploaded_file is not None and api_key:
                     if chunk.text:
                         texto_completo += chunk.text
                         buffer_chars += len(chunk.text)
-                        # Atualiza a tela em blocos para evitar gargalo de renderização
                         if buffer_chars >= 35:
                             output_area.code(texto_completo, language="text")
                             buffer_chars = 0
