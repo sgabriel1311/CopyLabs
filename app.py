@@ -1,7 +1,8 @@
 import streamlit as st
 from google import genai
 from google.genai import types
-import time
+from pypdf import PdfReader
+import io
 
 st.set_page_config(page_title="Transcritor de Exames", page_icon="🩺", layout="centered")
 
@@ -10,7 +11,7 @@ st.info("Aviso de privacidade: Nenhum arquivo fica salvo neste site. Para maior 
 
 SYSTEM_INSTRUCTION = """
 Você é um assistente médico especializado em transcrição de exames laboratoriais para evolução em prontuário eletrônico.
-Extraia TODOS os resultados de exames presentes no documento e organize-os estritamente em texto corrido por data.
+Extraia TODOS os resultados de exames presentes e organize-os estritamente em texto corrido por data.
 
 REGRAS ESTRITAS DE FORMATAÇÃO:
 1. NÃO use Markdown (proibido usar **, *, #, listas ou quebras de linha dentro da mesma data). O resultado deve ser texto puro pronto para colar em prontuário.
@@ -31,45 +32,56 @@ EXEMPLO DE SAÍDA ESPERADA:
 (13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL) 9 / Troponina 12,8 / D-DÍMERO: > 7650 / Hemoglobina 8,1 / Hematocrito 25,6% / Leucócitos 71.380 / Bastões 0,0% / Meta 0,0% / Mielo 0,0% / Plaquetas 399.000 / Uréia 88 / Creatinina 2,20 / PCR 214,5 / Sódio 140 / Potássio 4,2 / Magnésio 1,5 / TGO 16 / TGP 10 / Bilirrubina total 0,2 / BD 0,2 / BI 0,0 / TAP 77,0% / RNI 1,16 / TTPa 23,6 / Relação 0,82 / Proteínas Totais 4,6 / Albumina 2,0
 """
 
+def extrair_texto_rapido(pdf_bytes):
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        texto = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+        return texto if len(texto) > 50 else None
+    except Exception:
+        return None
+
 api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else None
 
 if not api_key:
     api_key = st.sidebar.text_input("Insira sua Gemini API Key", type="password")
 
-uploaded_file = st.file_uploader("Selecione ou arraste o PDF do exame (leitura automática)", type=["pdf"])
+uploaded_file = st.file_uploader("Selecione ou arraste o PDF do exame", type=["pdf"])
 
 if uploaded_file is not None:
     if not api_key:
         st.warning("⚠️ Chave da API não configurada.")
     else:
-        # Evita reprocessar o mesmo arquivo se a tela atualizar
         file_id = f"{uploaded_file.name}_{uploaded_file.size}"
         
         if st.session_state.get("last_file_id") != file_id:
             client = genai.Client(api_key=api_key)
             pdf_bytes = uploaded_file.getvalue()
             
-            # Modelos mais rápidos primeiro
-            modelos = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.8-pro"]
+            # Tenta extrair texto puro localmente em milissegundos
+            texto_extraido = extrair_texto_rapido(pdf_bytes)
+            
+            if texto_extraido:
+                conteudo_envio = [f"Transcreva os resultados deste laudo seguindo rigorosamente o formato do exemplo:\n\n{texto_extraido}"]
+            else:
+                # Fallback visual caso o PDF seja escaneado/imagem
+                conteudo_envio = [
+                    types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
+                    "Transcreva os resultados seguindo rigorosamente o formato do exemplo."
+                ]
+
+            # Modelos ultra-rápidos em ordem de velocidade
+            modelos = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.8-pro"]
             sucesso = False
             texto_completo = ""
 
             st.subheader("Resultado Pronto para Copiar:")
             output_area = st.empty()
-            output_area.info("⚡ Transcrevendo em tempo real...")
 
             for modelo in modelos:
                 try:
-                    # Streaming + Thinking zerado para resposta instantânea
                     response_stream = client.models.generate_content_stream(
                         model=modelo,
-                        contents=[
-                            types.Part.from_bytes(
-                                data=pdf_bytes,
-                                mime_type="application/pdf",
-                            ),
-                            "Transcreva os resultados seguindo rigorosamente o formato do exemplo."
-                        ],
+                        contents=conteudo_envio,
                         config=types.GenerateContentConfig(
                             system_instruction=SYSTEM_INSTRUCTION,
                             temperature=0.0,
@@ -89,14 +101,14 @@ if uploaded_file is not None:
 
                 except Exception as e:
                     erro_str = str(e)
-                    if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str or "404" in erro_str:
+                    if any(code in erro_str for code in ["503", "UNAVAILABLE", "429", "404"]):
                         continue
                     else:
                         output_area.error(f"Erro ao processar: {erro_str}")
                         break
 
             if not sucesso and not texto_completo:
-                output_area.error("Servidores temporariamente congestionados. Tente enviar o arquivo novamente em alguns segundos.")
+                output_area.error("Servidores temporariamente ocupados. Tente enviar novamente em alguns segundos.")
         else:
             st.subheader("Resultado Pronto para Copiar:")
             st.code(st.session_state.get("last_result", ""), language="text")
