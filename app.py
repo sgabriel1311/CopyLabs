@@ -9,15 +9,26 @@ st.title("🩺 Transcritor de Exames para Prontuário")
 st.info("Aviso de privacidade: Nenhum arquivo fica salvo neste site. Para maior segurança, oculte o nome e CPF do paciente antes de enviar.")
 
 SYSTEM_INSTRUCTION = """
-Você é um assistente médico especializado em transcrição de exames laboratoriais para prontuário eletrônico.
-Extraia TODOS os resultados de exames presentes no documento e forneça um resumo compacto e direto, organizado por data (se houver mais de uma) e categoria/painel.
+Você é um assistente médico especializado em transcrição de exames laboratoriais para evolução em prontuário eletrônico.
+Extraia TODOS os resultados de exames presentes no documento e organize-os estritamente em texto corrido por data.
 
-REGRAS ESTRITAS:
-1. NÃO inclua valores de referência.
-2. NÃO adicione introduções, saudações, comentários clínicos ou conclusões.
-3. Use formato compacto separado por barras na mesma linha por grupo de exames (ex: Hemograma (DD/MM/AAAA): Hb 13,5 | Ht 40% | Leuco 6.500 | Plaq 250.000).
-4. Destaque apenas alterações relevantes com asterisco (*) se estiverem explicitamente sinalizadas no laudo, mantendo a concisão.
-5. Mantenha as unidades de medida apenas quando essenciais para evitar ambiguidade.
+REGRAS ESTRITAS DE FORMATAÇÃO:
+1. NÃO use Markdown (proibido usar **, *, #, listas ou quebras de linha dentro da mesma data). O resultado deve ser texto puro pronto para colar em prontuário.
+2. NÃO inclua valores de referência, introduções, saudações ou comentários clínicos.
+3. Inicie cada data no formato exato: (DD/MM/AAAA): seguido de todos os exames daquela data na mesma linha contínua, separados por " / ".
+4. NÃO agrupe por categorias (não escreva "Hemograma:", "Bioquímica:" ou "Coagulação:"). Liste os parâmetros diretamente em sequência. Exceção: para gasometria, identifique como GASO ARTERIAL: ou GASO VENOSA: antes dos seus parâmetros.
+5. Utilize exatamente esta nomenclatura padrão:
+   - Gasometria: GASO ARTERIAL: pH X / pCO2 X / pO2 X / BE X / HCO3 X / satO2 X% / FIO2 X (se informado)
+   - Hemograma: Hemoglobina X / Hematocrito X% / Leucócitos X / Bastões X% / Meta X% / Mielo X% / Plaquetas X (inclua outros diferenciais apenas se relevantes ou presentes)
+   - Função Renal/Eletrólitos/Inflamatórios: Uréia X / Creatinina X / PCR X / Sódio X / Potássio X / Magnésio X / Cálcio Total X / Cálcio Iônico X / Fósforo X
+   - Hepático/Enzimas: TGO X / TGP X / Bilirrubina total X / BD X / BI X / GGT X / FA X / Amilase X / Lipase X / CPK X / Troponina X / D-DÍMERO: X / Lactato (unidade) X
+   - Coagulograma: TAP X% / RNI X / TTPa X / Relação X
+   - Proteínas: Proteínas Totais X / Albumina X
+6. Omita unidades de medida padrão para manter a concisão, mantendo apenas "%" quando aplicável e unidades específicas quando necessário para evitar ambiguidade (ex: Lactato (mg/dL) ou (mmol/L)).
+7. Se houver exames de datas diferentes no mesmo PDF, coloque cada data em um parágrafo separado seguindo o mesmo padrão (DD/MM/AAAA):.
+
+EXEMPLO DE SAÍDA ESPERADA:
+(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL) 9 / Troponina 12,8 / D-DÍMERO: > 7650 / Hemoglobina 8,1 / Hematocrito 25,6% / Leucócitos 71.380 / Bastões 0,0% / Meta 0,0% / Mielo 0,0% / Plaquetas 399.000 / Uréia 88 / Creatinina 2,20 / PCR 214,5 / Sódio 140 / Potássio 4,2 / Magnésio 1,5 / TGO 16 / TGP 10 / Bilirrubina total 0,2 / BD 0,2 / BI 0,0 / TAP 77,0% / RNI 1,16 / TTPa 23,6 / Relação 0,82 / Proteínas Totais 4,6 / Albumina 2,0
 """
 
 api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else None
@@ -50,11 +61,11 @@ if uploaded_file is not None:
                                         data=pdf_bytes,
                                         mime_type="application/pdf",
                                     ),
-                                    "Transcreva os resultados deste exame seguindo rigorosamente as instruções do sistema."
+                                    "Transcreva os resultados deste exame seguindo rigorosamente o formato do exemplo e as instruções do sistema."
                                 ],
                                 config=types.GenerateContentConfig(
                                     system_instruction=SYSTEM_INSTRUCTION,
-                                    temperature=0.1,
+                                    temperature=0.0,
                                 )
                             )
                             st.subheader("Resultado Pronto para Copiar:")
