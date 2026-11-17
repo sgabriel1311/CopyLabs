@@ -56,16 +56,19 @@ REGRAS ESTRITAS:
   * Inclua os diferenciais do leucograma (Bastões, Segmentados, Linfócitos, Monócitos, Eosinófilos, Basófilos, Blastos/Meta/Mielo) SOMENTE se algum estiver ALTERADO (fora do VR do laudo) ou se houver desvio à esquerda. Se o leucograma diferencial estiver normal, omita todos os diferenciais e mostre apenas "Leuco: X".
 - Sem introduções, saudações ou comentários.
 - Formato: (DD/MM/AAAA): Exame: Valor / Exame: Valor
-- Sem títulos de categoria (exceto GASO ARTERIAL:, GASO VENOSA: e D-DÍMERO:).
+- Sem títulos de categoria, EXCETO os prefixos obrigatórios de gasometria e D-dímero abaixo:
+- REGRA OBRIGATÓRIA DE GASOMETRIAS (NUNCA OMITA O PREFIXO):
+  * Sempre que houver Gasometria Arterial (material arterial), inicie os parâmetros dessa gasometria com "GASO ARTERIAL: " (ex: GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L).
+  * Sempre que houver Gasometria Venosa (material venoso), inicie os parâmetros dessa gasometria com "GASO VENOSA: " (ex: GASO VENOSA: pH 7,310 / pCO2 48,0 / pO2 38,0 / BE -1,5 / HCO3 24,0 / satO2 68,0%).
+  * Se o laudo tiver tanto gasometria arterial quanto venosa na mesma data, identifique cada bloco com seu respectivo prefixo ("GASO ARTERIAL: ..." e "GASO VENOSA: ...").
 - USE OBRIGATORIAMENTE ESTAS ABREVIAÇÕES MÉDICAS COM DOIS-PONTOS:
-  * Gasometria: GASO ARTERIAL: pH X / pCO2 X / pO2 X / BE X / HCO3 X / satO2 X% / FIO2 X
   * Hemograma: Hb: X / Ht: X% / Leuco: X / (diferenciais apenas se alterados) / Plaq: X
   * Função Renal e Eletrólitos: Ur: X / Cr: X / Na: X / K: X / Mg: X / CaT: X / CaI: X / P: X
   * Inflamatórios/Cardíacos/Coag: PCR: X / Lactato (unidade): X / Tropo: X / D-DÍMERO: X / TAP: X% / RNI: X / TTPa: X / Relação: X
   * Hepático/Proteínas: TGO: X / TGP: X / BT: X / BD: X / BI: X / GGT: X / FA: X / Amilase: X / Lipase: X / CPK: X / PT: X / Alb: X
 
 EXEMPLO:
-(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL): 9 / Tropo: 12,8 / D-DÍMERO: > 7650 / Hb: 8,1 / Ht: 25,6% / Leuco: 8.380 / Plaq: 399.000 / Ur: 88 / Cr: 2,20 / PCR: 214,5 / Na: 140 / K: 4,2 / Mg: 1,5 / TGO: 16 / TGP: 10 / BT: 0,2 / BD: 0,2 / BI: 0,0 / TAP: 77,0% / RNI: 1,16 / TTPa: 23,6 / Relação: 0,82 / PT: 4,6 / Alb: 2,0`;
+(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / GASO VENOSA: pH 7,310 / pCO2 48,0 / pO2 38,0 / BE -1,5 / HCO3 24,0 / satO2 68,0% / Lactato (mg/dL): 9 / Tropo: 12,8 / D-DÍMERO: > 7650 / Hb: 8,1 / Ht: 25,6% / Leuco: 8.380 / Plaq: 399.000 / Ur: 88 / Cr: 2,20 / PCR: 214,5 / Na: 140 / K: 4,2 / Mg: 1,5 / TGO: 16 / TGP: 10 / BT: 0,2 / BD: 0,2 / BI: 0,0 / TAP: 77,0% / RNI: 1,16 / TTPa: 23,6 / Relação: 0,82 / PT: 4,6 / Alb: 2,0`;
 
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
