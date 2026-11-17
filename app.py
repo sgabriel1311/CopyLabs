@@ -43,45 +43,53 @@ if uploaded_file is not None:
         st.warning("⚠️ Chave da API não configurada.")
     else:
         if st.button("Transcrever Exame", type="primary"):
-            with st.spinner("Lendo PDF e organizando resultados..."):
-                client = genai.Client(api_key=api_key)
-                pdf_bytes = uploaded_file.getvalue()
-                
-                modelos = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.5-flash"]
-                sucesso = False
-                ultimo_erro = ""
+            status_placeholder = st.empty()
+            status_placeholder.info("⏳ Lendo PDF e organizando resultados...")
+            
+            client = genai.Client(api_key=api_key)
+            pdf_bytes = uploaded_file.getvalue()
+            
+            # Lista de modelos em ordem de prioridade caso haja pico de demanda
+            modelos = ["gemini-3.8-flash", "gemini-3.8-pro", "gemini-3.1-flash-lite"]
+            sucesso = False
+            erros_registrados = []
 
-                for modelo in modelos:
-                    for tentativa in range(2):
-                        try:
-                            response = client.models.generate_content(
-                                model=modelo,
-                                contents=[
-                                    types.Part.from_bytes(
-                                        data=pdf_bytes,
-                                        mime_type="application/pdf",
-                                    ),
-                                    "Transcreva os resultados deste exame seguindo rigorosamente o formato do exemplo e as instruções do sistema."
-                                ],
-                                config=types.GenerateContentConfig(
-                                    system_instruction=SYSTEM_INSTRUCTION,
-                                    temperature=0.0,
-                                )
+            for modelo in modelos:
+                for tentativa in range(2):
+                    try:
+                        response = client.models.generate_content(
+                            model=modelo,
+                            contents=[
+                                types.Part.from_bytes(
+                                    data=pdf_bytes,
+                                    mime_type="application/pdf",
+                                ),
+                                "Transcreva os resultados deste exame seguindo rigorosamente o formato do exemplo e as instruções do sistema."
+                            ],
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_INSTRUCTION,
+                                temperature=0.0,
                             )
-                            st.subheader("Resultado Pronto para Copiar:")
-                            st.code(response.text, language="text")
-                            st.caption("Passe o mouse no canto superior direito da caixa cinza acima e clique no ícone de copiar.")
-                            sucesso = True
-                            break
-                        except Exception as e:
-                            ultimo_erro = str(e)
-                            if "503" in ultimo_erro or "UNAVAILABLE" in ultimo_erro:
-                                time.sleep(2)
-                                continue
-                            else:
-                                break
-                    if sucesso:
+                        )
+                        status_placeholder.empty()
+                        st.subheader("Resultado Pronto para Copiar:")
+                        st.code(response.text, language="text")
+                        st.caption("Passe o mouse no canto superior direito da caixa cinza acima e clique no ícone de copiar.")
+                        sucesso = True
                         break
+                    except Exception as e:
+                        erro_str = str(e)
+                        erros_registrados.append(f"{modelo}: {erro_str}")
+                        if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str:
+                            status_placeholder.warning(f"Servidor ocupado ({modelo}). Tentando rota alternativa...")
+                            time.sleep(3 + tentativa * 2)
+                            continue
+                        else:
+                            # Se o modelo não existir (404), pula direto para o próximo da lista
+                            break
+                if sucesso:
+                    break
 
-                if not sucesso:
-                    st.error(f"Os servidores estão temporariamente sobrecarregados. Tente novamente em alguns segundos. Detalhe: {ultimo_erro}")
+            if not sucesso:
+                status_placeholder.empty()
+                st.error("Os servidores da IA estão com pico de instabilidade no momento. Aguarde 10 segundos e clique em 'Transcrever Exame' novamente.")
