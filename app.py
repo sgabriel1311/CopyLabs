@@ -19,7 +19,7 @@ REGRAS ESTRITAS DE FORMATAÇÃO:
 4. NÃO agrupe por categorias (não escreva "Hemograma:", "Bioquímica:" ou "Coagulação:"). Liste os parâmetros diretamente em sequência. Exceção: para gasometria, identifique como GASO ARTERIAL: ou GASO VENOSA: antes dos seus parâmetros.
 5. Utilize exatamente esta nomenclatura padrão:
    - Gasometria: GASO ARTERIAL: pH X / pCO2 X / pO2 X / BE X / HCO3 X / satO2 X% / FIO2 X (se informado)
-   - Hemograma: Hemoglobina X / Hematocrito X% / Leucócitos X / Bastões X% / Meta X% / Mielo X% / Plaquetas X (inclua outros diferenciais apenas se relevantes ou presentes)
+   - Hemograma: Hemoglobina X / Hematocrito X% / Leucócitos X / Bastões X% / Meta X% / Mielo X% / Plaquetas X
    - Função Renal/Eletrólitos/Inflamatórios: Uréia X / Creatinina X / PCR X / Sódio X / Potássio X / Magnésio X / Cálcio Total X / Cálcio Iônico X / Fósforo X
    - Hepático/Enzimas: TGO X / TGP X / Bilirrubina total X / BD X / BI X / GGT X / FA X / Amilase X / Lipase X / CPK X / Troponina X / D-DÍMERO: X / Lactato (unidade) X
    - Coagulograma: TAP X% / RNI X / TTPa X / Relação X
@@ -36,60 +36,70 @@ api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets els
 if not api_key:
     api_key = st.sidebar.text_input("Insira sua Gemini API Key", type="password")
 
-uploaded_file = st.file_uploader("Clique abaixo para escolher o PDF do exame", type=["pdf"])
+uploaded_file = st.file_uploader("Selecione ou arraste o PDF do exame (leitura automática)", type=["pdf"])
 
 if uploaded_file is not None:
     if not api_key:
         st.warning("⚠️ Chave da API não configurada.")
     else:
-        if st.button("Transcrever Exame", type="primary"):
-            status_placeholder = st.empty()
-            status_placeholder.info("⏳ Lendo PDF e organizando resultados...")
-            
+        # Evita reprocessar o mesmo arquivo se a tela atualizar
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        
+        if st.session_state.get("last_file_id") != file_id:
             client = genai.Client(api_key=api_key)
             pdf_bytes = uploaded_file.getvalue()
             
-            # Lista de modelos em ordem de prioridade caso haja pico de demanda
-            modelos = ["gemini-3.8-flash", "gemini-3.8-pro", "gemini-3.1-flash-lite"]
+            # Modelos mais rápidos primeiro
+            modelos = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.8-pro"]
             sucesso = False
-            erros_registrados = []
+            texto_completo = ""
+
+            st.subheader("Resultado Pronto para Copiar:")
+            output_area = st.empty()
+            output_area.info("⚡ Transcrevendo em tempo real...")
 
             for modelo in modelos:
-                for tentativa in range(2):
-                    try:
-                        response = client.models.generate_content(
-                            model=modelo,
-                            contents=[
-                                types.Part.from_bytes(
-                                    data=pdf_bytes,
-                                    mime_type="application/pdf",
-                                ),
-                                "Transcreva os resultados deste exame seguindo rigorosamente o formato do exemplo e as instruções do sistema."
-                            ],
-                            config=types.GenerateContentConfig(
-                                system_instruction=SYSTEM_INSTRUCTION,
-                                temperature=0.0,
-                            )
+                try:
+                    # Streaming + Thinking zerado para resposta instantânea
+                    response_stream = client.models.generate_content_stream(
+                        model=modelo,
+                        contents=[
+                            types.Part.from_bytes(
+                                data=pdf_bytes,
+                                mime_type="application/pdf",
+                            ),
+                            "Transcreva os resultados seguindo rigorosamente o formato do exemplo."
+                        ],
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_INSTRUCTION,
+                            temperature=0.0,
+                            thinking_config=types.ThinkingConfig(thinking_budget=0),
                         )
-                        status_placeholder.empty()
-                        st.subheader("Resultado Pronto para Copiar:")
-                        st.code(response.text, language="text")
-                        st.caption("Passe o mouse no canto superior direito da caixa cinza acima e clique no ícone de copiar.")
-                        sucesso = True
-                        break
-                    except Exception as e:
-                        erro_str = str(e)
-                        erros_registrados.append(f"{modelo}: {erro_str}")
-                        if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str:
-                            status_placeholder.warning(f"Servidor ocupado ({modelo}). Tentando rota alternativa...")
-                            time.sleep(3 + tentativa * 2)
-                            continue
-                        else:
-                            # Se o modelo não existir (404), pula direto para o próximo da lista
-                            break
-                if sucesso:
+                    )
+                    
+                    for chunk in response_stream:
+                        if chunk.text:
+                            texto_completo += chunk.text
+                            output_area.code(texto_completo, language="text")
+                    
+                    st.session_state["last_file_id"] = file_id
+                    st.session_state["last_result"] = texto_completo
+                    sucesso = True
                     break
 
-            if not sucesso:
-                status_placeholder.empty()
-                st.error("Os servidores da IA estão com pico de instabilidade no momento. Aguarde 10 segundos e clique em 'Transcrever Exame' novamente.")
+                except Exception as e:
+                    erro_str = str(e)
+                    if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str or "404" in erro_str:
+                        continue
+                    else:
+                        output_area.error(f"Erro ao processar: {erro_str}")
+                        break
+
+            if not sucesso and not texto_completo:
+                output_area.error("Servidores temporariamente congestionados. Tente enviar o arquivo novamente em alguns segundos.")
+        else:
+            st.subheader("Resultado Pronto para Copiar:")
+            st.code(st.session_state.get("last_result", ""), language="text")
+
+        if st.session_state.get("last_result"):
+            st.caption("Passe o mouse no canto superior direito da caixa cinza acima e clique no ícone de copiar.")
