@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transcritor de Exames para Prontuário</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --accent: #3b82f6; --accent-hover: #2563eb; --border: #334155; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 24px 16px; display: flex; justify-content: center; }
+    .container { max-width: 760px; width: 100%; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    input[type="password"] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 16px; text-align: center; cursor: pointer; transition: 0.2s; }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(59, 130, 246, 0.08); }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    textarea { width: 100%; min-height: 140px; background: var(--bg); color: #e2e8f0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.92rem; line-height: 1.5; resize: vertical; }
+    button { background: var(--accent); color: white; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+    button:hover { background: var(--accent-hover); }
+    .status { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+    a { color: #60a5fa; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🩺 Transcritor de Exames para Prontuário</h1>
+    <div class="subtitle">Processamento local no seu navegador. Nenhum dado do paciente é enviado ou salvo em servidores de terceiros.</div>
+
+    <div class="card">
+      <label for="apiKey">Sua Gemini API Key (salva apenas neste navegador) — <a href="https://aistudio.google.com/apikey" target="_blank">Obter chave gratuita</a></label>
+      <input type="password" id="apiKey" placeholder="Cole sua chave AIzaSy..." />
+    </div>
+
+    <div class="card">
+      <div class="drop-zone" id="dropZone">
+        <strong>Clique para selecionar</strong> ou arraste o PDF do exame aqui
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+      <div class="status" id="status">Aguardando arquivo PDF...</div>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none;">
+      <div class="result-header">
+        <strong>Resultado Pronto para Prontuário:</strong>
+        <button id="copyBtn">Copiar Texto</button>
+      </div>
+      <textarea id="output" readonly></textarea>
+    </div>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const SYSTEM_INSTRUCTION = `Transcreva resultados laboratoriais em texto puro corrido por data para evolução em prontuário médico.
+REGRAS ESTRITAS:
+- Proibido Markdown (sem **, *, # ou quebras de linha dentro da mesma data).
+- NUNCA escreva os valores de referência na saída, mas USE os valores de referência do laudo para avaliar o leucograma:
+  * Inclua os diferenciais do leucograma (Bastões, Segmentados, Linfócitos, Monócitos, Eosinófilos, Basófilos, Blastos/Meta/Mielo) SOMENTE se algum estiver ALTERADO (fora do VR do laudo) ou se houver desvio à esquerda. Se o leucograma diferencial estiver normal, omita todos os diferenciais e mostre apenas "Leuco: X".
+- Sem introduções, saudações ou comentários.
+- Formato: (DD/MM/AAAA): Exame: Valor / Exame: Valor
+- Sem títulos de categoria (exceto GASO ARTERIAL:, GASO VENOSA: e D-DÍMERO:).
+- USE OBRIGATORIAMENTE ESTAS ABREVIAÇÕES MÉDICAS COM DOIS-PONTOS:
+  * Gasometria: GASO ARTERIAL: pH X / pCO2 X / pO2 X / BE X / HCO3 X / satO2 X% / FIO2 X
+  * Hemograma: Hb: X / Ht: X% / Leuco: X / (diferenciais apenas se alterados) / Plaq: X
+  * Função Renal e Eletrólitos: Ur: X / Cr: X / Na: X / K: X / Mg: X / CaT: X / CaI: X / P: X
+  * Inflamatórios/Cardíacos/Coag: PCR: X / Lactato (unidade): X / Tropo: X / D-DÍMERO: X / TAP: X% / RNI: X / TTPa: X / Relação: X
+  * Hepático/Proteínas: TGO: X / TGP: X / BT: X / BD: X / BI: X / GGT: X / FA: X / Amilase: X / Lipase: X / CPK: X / PT: X / Alb: X
+
+EXEMPLO:
+(13/11/2026): GASO ARTERIAL: pH 7,360 / pCO2 40,0 / pO2 57,0 / BE -2,1 / HCO3 23,2 / satO2 89,0% / FIO2 4 L / Lactato (mg/dL): 9 / Tropo: 12,8 / D-DÍMERO: > 7650 / Hb: 8,1 / Ht: 25,6% / Leuco: 8.380 / Plaq: 399.000 / Ur: 88 / Cr: 2,20 / PCR: 214,5 / Na: 140 / K: 4,2 / Mg: 1,5 / TGO: 16 / TGP: 10 / BT: 0,2 / BD: 0,2 / BI: 0,0 / TAP: 77,0% / RNI: 1,16 / TTPa: 23,6 / Relação: 0,82 / PT: 4,6 / Alb: 2,0`;
+
+    const apiKeyInput = document.getElementById('apiKey');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const statusEl = document.getElementById('status');
+    const resultCard = document.getElementById('resultCard');
+    const outputEl = document.getElementById('output');
+    const copyBtn = document.getElementById('copyBtn');
+
+    apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+    apiKeyInput.addEventListener('input', () => localStorage.setItem('gemini_api_key', apiKeyInput.value.trim()));
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) processFile(e.target.files[0]);
+    });
+
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(outputEl.value);
+      copyBtn.textContent = 'Copiado!';
+      setTimeout(() => copyBtn.textContent = 'Copiar Texto', 1500);
+    });
+
+    async function extractPdfText(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      return fullText.trim();
+    }
+
+    async function processFile(file) {
+      const key = apiKeyInput.value.trim();
+      if (!key) {
+        statusEl.textContent = '⚠️ Cole sua Gemini API Key acima antes de enviar o PDF.';
+        return;
+      }
+
+      statusEl.textContent = '⚡ Extraindo texto do PDF e transcrevendo...';
+      resultCard.style.display = 'block';
+      outputEl.value = '';
+
+      try {
+        const extractedText = await extractPdfText(file);
+        const modelos = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+        let sucesso = false;
+
+        for (const modelo of modelos) {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:streamGenerateContent?alt=sse&key=${key}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+              contents: [{ parts: [{ text: extractedText }] }],
+              generationConfig: { temperature: 0.0, thinkingConfig: { thinkingBudget: 0 } }
+            })
+          });
+
+          if (!response.ok) continue;
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  const chunk = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                  outputEl.value += chunk;
+                } catch (_) {}
+              }
+            }
+          }
+          sucesso = true;
+          break;
+        }
+
+        statusEl.textContent = sucesso ? '✅ Transcrição concluída!' : '❌ Erro nos servidores da API. Verifique sua chave ou tente novamente.';
+      } catch (err) {
+        statusEl.textContent = '❌ Erro ao ler PDF: ' + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
